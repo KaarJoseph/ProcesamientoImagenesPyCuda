@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aplicación de Convolución con PyCUDA</title>
-    <link rel="stylesheet" href="edicion.css">
+    <link rel="stylesheet" href="../static/edicion.css">
 </head>
 <body>
     <div class="main-container">
@@ -20,7 +20,7 @@
             
             <!-- Columna de Opciones -->
             <div class="card options-card">
-                <h2>Opciones de Procesamiento</h2>
+                <h2>Opciones de Procesamiento</h2> <br> <br>
                 <div class="options-section">
                     <label for="imageSelect">Selecciona el Filtro:</label>
                     <select id="imageSelect">
@@ -44,19 +44,23 @@
             
             <!-- Columna de Resultado -->
             <div class="card result-card">
-                <h2>Resultado</h2>
+                <h2>Resultado</h2>  <br>
                 <canvas id="processedCanvas" width="400" height="300"></canvas>
-                <div class="info-box">
+                <div id="initialMessage" class="info-box">
+                    <p>Aún no ha procesado ninguna imagen.</p>
+                </div>
+                <div id="infoBox" class="info-box" style="display: none;">
                     <h3>Información de Procesamiento</h3>
-                    <p><strong>Número de bloques:</strong> 256</p>
-                    <p><strong>Número de hilos:</strong> 1024</p>
-                    <p><strong>Tiempo de procesamiento:</strong> 2.34s</p>
-                    <p><strong>Máscara utilizada:</strong> 3x3</p>
+                    <p><strong>Número de bloques:</strong> <span id="blockCount">N/A</span></p>
+                    <p><strong>Número de hilos:</strong> <span id="threadCount">N/A</span></p>
+                    <p><strong>Tiempo de procesamiento:</strong> <span id="processingTime">N/A</span></p>
+                    <p><strong>Máscara utilizada:</strong> <span id="maskUsed">N/A</span></p>
                 </div>
             </div>
+
         </div>
     </div>
 
-    <script src="codigo.js"></script>
+    <script src="../static/codigo.js"></script>
 </body>
 </html>

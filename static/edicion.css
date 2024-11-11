@@ -99,14 +99,15 @@ h2 {
 }
 
 #previewCanvas {
-    width: 90%;
-    max-width: 300px;
+    width: 70%;
+    max-width: 400px; /* Limitar el ancho máximo */
     height: auto;
     border: 2px solid #ff4081;
     border-radius: 12px;
     background-color: #2c2c3e;
     box-shadow: 0px 4px 8px rgba(255, 64, 129, 0.2);
     margin-top: 20px;
+    object-fit: contain; /* Asegura que la imagen se ajuste sin distorsionarse */
 }
 
 /* Opciones de Procesamiento */
@@ -167,15 +168,15 @@ button:hover {
     color: #ff4081;
 }
 
-/* Resultado e Información */
 .result-card #processedCanvas {
-    width: 100%;
-    max-width: 400px;
+    width: 80%;
+    max-width: 400px; /* Limitar el ancho máximo */
     height: auto;
     border: 1px solid #333;
     border-radius: 12px;
     box-shadow: 0px 4px 12px rgba(255, 64, 129, 0.15);
     background-color: #2c2c3e;
+    object-fit: contain; /* Asegura que la imagen procesada no se distorsione */
 }
 
 .info-box {
