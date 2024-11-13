@@ -18,34 +18,51 @@ device = cuda.Device(0)  # Asegúrate de que esté disponible
 # Definición de los filtros CUDA
 kernels = {
     "sobel": """
-        __global__ void sobel_filter(float *input, float *output, int width, int height) {
+        __global__ void sobel_filter(float *input, float *output, int width, int height, int maskSize) {
             int x = blockIdx.x * blockDim.x + threadIdx.x;
             int y = blockIdx.y * blockDim.y + threadIdx.y;
+            int halfMask = maskSize / 2;
 
-            if (x > 0 && x < width - 1 && y > 0 && y < height - 1) {
+            if (x >= halfMask && x < width - halfMask && y >= halfMask && y < height - halfMask) {
                 int idx = y * width + x;
-                float Gx = input[idx - 1 - width] - input[idx + 1 - width]
-                          + 2 * input[idx - 1] - 2 * input[idx + 1]
-                          + input[idx - 1 + width] - input[idx + 1 + width];
-                float Gy = input[idx - 1 - width] + 2 * input[idx - width] + input[idx + 1 - width]
-                          - input[idx - 1 + width] - 2 * input[idx + width] - input[idx + 1 + width];
-                output[idx] = sqrtf(Gx * Gx + Gy * Gy);
+                float Gx = 0.0;
+                float Gy = 0.0;
+
+                for (int ky = -halfMask; ky <= halfMask; ky++) {
+                    for (int kx = -halfMask; kx <= halfMask; kx++) {
+                        int pos = (y + ky) * width + (x + kx);
+                        float val = input[pos];
+                        Gx += (kx == -1 ? -1 : (kx == 1 ? 1 : 0)) * val;
+                        Gy += (ky == -1 ? -1 : (ky == 1 ? 1 : 0)) * val;
+                    }
+                }
+
+                float magnitude = sqrtf(Gx * Gx + Gy * Gy);
+                output[idx] = min(magnitude, 255.0f);
             } else if (x < width && y < height) {
-                output[y * width + x] = input[y * width + x];
+                output[y * width + x] = 0.0f;
             }
         }
     """,
     "highpass": """
-        __global__ void highpass_filter(float *input, float *output, int width, int height) {
+        __global__ void highpass_filter(float *input, float *output, int width, int height, int maskSize) {
             int x = blockIdx.x * blockDim.x + threadIdx.x;
             int y = blockIdx.y * blockDim.y + threadIdx.y;
-            
-            if (x > 0 && x < width - 1 && y > 0 && y < height - 1) {
+            int halfMask = maskSize / 2;
+
+            if (x >= halfMask && x < width - halfMask && y >= halfMask && y < height - halfMask) {
                 int idx = y * width + x;
-                float result = 4 * input[idx] - input[idx - 1] - input[idx + 1] - input[idx - width] - input[idx + width];
-                output[idx] = result;
+                float sum = 0.0;
+                for (int ky = -halfMask; ky <= halfMask; ky++) {
+                    for (int kx = -halfMask; kx <= halfMask; kx++) {
+                        int pos = (y + ky) * width + (x + kx);
+                        float val = input[pos];
+                        sum += (kx == 0 && ky == 0 ? maskSize * maskSize - 1 : -1) * val;
+                    }
+                }
+                output[idx] = min(max(sum, 0.0f), 255.0f);
             } else if (x < width && y < height) {
-                output[y * width + x] = input[y * width + x];
+                output[y * width + x] = 0.0f;
             }
         }
     """,
@@ -54,17 +71,17 @@ kernels = {
             int x = blockIdx.x * blockDim.x + threadIdx.x;
             int y = blockIdx.y * blockDim.y + threadIdx.y;
             int halfMask = maskSize / 2;
-            
+
             if (x >= halfMask && x < width - halfMask && y >= halfMask && y < height - halfMask) {
-                float min_val = input[y * width + x];
-                
+                float min_val = 255.0f;
+
                 for (int ky = -halfMask; ky <= halfMask; ky++) {
                     for (int kx = -halfMask; kx <= halfMask; kx++) {
                         int idx = (y + ky) * width + (x + kx);
                         min_val = fminf(min_val, input[idx]);
                     }
                 }
-                
+
                 output[y * width + x] = min_val;
             } else {
                 output[y * width + x] = input[y * width + x];
@@ -76,7 +93,7 @@ kernels = {
 @app.route('/api/procesar_imagen', methods=['POST'])
 def procesar_imagen():
     try:
-        start_time = time.time()  # Tiempo de inicio del procesamiento
+        start_time = time.time()
 
         # Crear contexto de CUDA para asegurar procesamiento único
         context = device.make_context()
@@ -117,7 +134,7 @@ def procesar_imagen():
         grid = (math.ceil(width / block[0]), math.ceil(height / block[1]))
 
         # Ejecutar el kernel
-        if filtro == "erosion":
+        if filtro == "erosion" or filtro == "highpass" or filtro == "sobel":
             filtro_func(input_gpu, output_gpu, np.int32(width), np.int32(height), np.int32(mask_size), block=block, grid=grid)
         else:
             filtro_func(input_gpu, output_gpu, np.int32(width), np.int32(height), block=block, grid=grid)
@@ -125,7 +142,7 @@ def procesar_imagen():
         # Obtener resultados y asegurar que estén en escala de grises
         resultado = np.empty_like(imagen_np)
         cuda.memcpy_dtoh(resultado, output_gpu)
-        resultado = np.clip(resultado, 0, 255)  # Limitar valores a escala de grises
+        resultado = np.clip(resultado, 0, 255)
         resultado_image = Image.fromarray(resultado.astype(np.uint8))
 
         # Convertir la imagen a PNG y enviarla
@@ -140,11 +157,10 @@ def procesar_imagen():
         processing_time_seconds = time.time() - start_time
         processing_time_milliseconds = processing_time_seconds * 1000
 
-        # Enviar la información de procesamiento junto con la imagen
         return jsonify({
             "processedImageUrl": "data:image/png;base64," + processed_image_str,
-            "processingTimeSeconds": round(processing_time_seconds, 4),  # Tiempo en segundos con 4 decimales
-            "processingTimeMilliseconds": round(processing_time_milliseconds, 4),  # Tiempo en milisegundos con 4 decimales
+            "processingTimeSeconds": round(processing_time_seconds, 4),
+            "processingTimeMilliseconds": round(processing_time_milliseconds, 4),
             "maskUsed": mask_size_str,
             "threadCount": threads_per_block_x * threads_per_block_y,
             "blockCount": grid[0] * grid[1]
@@ -159,4 +175,4 @@ def index():
     return render_template('Pagina.html')
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000)
